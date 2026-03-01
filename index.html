@@ -1,0 +1,1379 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>WebCam Pro</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Sora:wght@300;400;600&display=swap');
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #0a0a0a;
+    --surface: #111;
+    --border: #222;
+    --accent: #c8ff00;
+    --accent2: #ff4d6d;
+    --text: #f0f0f0;
+    --muted: #555;
+  }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Sora', sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 20px 16px 40px;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background:
+      radial-gradient(ellipse at 20% 80%, rgba(200,255,0,0.04) 0%, transparent 60%),
+      radial-gradient(ellipse at 80% 20%, rgba(255,77,109,0.04) 0%, transparent 60%);
+    pointer-events: none;
+  }
+
+  .header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 18px;
+    align-self: flex-start;
+    max-width: 740px;
+    width: 100%;
+  }
+
+  .logo {
+    width: 36px; height: 36px;
+    background: var(--accent);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    animation: pulse 2s ease-in-out infinite;
+    flex-shrink: 0;
+  }
+  @keyframes pulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(200,255,0,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(200,255,0,0); }
+  }
+  .logo svg { width: 18px; height: 18px; fill: #0a0a0a; }
+
+  h1 { font-family:'Space Mono',monospace; font-size:1rem; letter-spacing:.15em; color:var(--accent); text-transform:uppercase; }
+
+  .rec-badge {
+    margin-left: auto;
+    font-family: 'Space Mono', monospace;
+    font-size: .65rem; letter-spacing: .1em;
+    color: var(--muted);
+    display: flex; align-items: center; gap: 6px;
+    opacity: 0; transition: opacity .3s;
+  }
+  .rec-badge.active { opacity: 1; color: var(--accent2); }
+  .rec-dot { width:7px;height:7px;background:var(--accent2);border-radius:50%;animation:blink 1s step-start infinite; }
+  @keyframes blink { 0%,100%{opacity:1}50%{opacity:0} }
+  @keyframes lbFadeIn { from{opacity:0;transform:scale(.97)} to{opacity:1;transform:scale(1)} }
+
+  /* CAM WRAPPER */
+  .cam-wrapper {
+    position: relative;
+    width: 100%; max-width: 740px;
+    aspect-ratio: 16/9;
+    background: #0c0c0c;
+    border: 1px solid var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .cam-wrapper::before,.cam-wrapper::after {
+    content:'';position:absolute;width:24px;height:24px;
+    border-color:var(--accent);border-style:solid;z-index:10;
+  }
+  .cam-wrapper::before { top:12px;left:12px;border-width:2px 0 0 2px; }
+  .cam-wrapper::after  { bottom:12px;right:12px;border-width:0 2px 2px 0; }
+  .corner-tr,.corner-bl {
+    position:absolute;width:24px;height:24px;
+    border-color:var(--accent);border-style:solid;z-index:10;
+  }
+  .corner-tr { top:12px;right:12px;border-width:2px 2px 0 0; }
+  .corner-bl { bottom:12px;left:12px;border-width:0 0 2px 2px; }
+
+  .scanline {
+    position:absolute;inset:0;
+    background:repeating-linear-gradient(to bottom,transparent 0,transparent 3px,rgba(0,0,0,.08) 3px,rgba(0,0,0,.08) 4px);
+    pointer-events:none;z-index:5;
+  }
+  .overlay-info {
+    position:absolute;top:16px;left:50%;transform:translateX(-50%);
+    font-family:'Space Mono',monospace;font-size:.6rem;letter-spacing:.1em;
+    color:rgba(200,255,0,.6);z-index:10;white-space:nowrap;
+  }
+
+  .no-cam {
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:12px;
+    font-family:'Space Mono',monospace;color:var(--muted);font-size:.75rem;letter-spacing:.1em;
+  }
+  .no-cam svg { opacity:.3; }
+
+  video {
+    width:100%;height:100%;object-fit:cover;
+    display:none;transition:filter .3s;
+  }
+
+  .flash {
+    position:absolute;inset:0;background:white;
+    opacity:0;pointer-events:none;z-index:20;transition:opacity .05s;
+  }
+  .flash.on { opacity:.85; }
+
+  /* TIMER OVERLAY */
+  .timer-overlay {
+    position:absolute;inset:0;
+    display:none;align-items:center;justify-content:center;
+    z-index:15;background:rgba(0,0,0,.35);
+  }
+  .timer-overlay.show { display:flex; }
+  .timer-num {
+    font-family:'Space Mono',monospace;font-size:6rem;
+    color:var(--accent);text-shadow:0 0 40px rgba(200,255,0,.6);
+    animation:pop .8s ease-out;
+  }
+  @keyframes pop { 0%{transform:scale(1.8);opacity:0}100%{transform:scale(1);opacity:1} }
+
+  /* REC BADGE ON CAM */
+  .rec-cam-badge {
+    position:absolute;top:16px;right:16px;z-index:12;
+    display:none;align-items:center;gap:6px;
+    background:rgba(255,77,109,.15);border:1px solid var(--accent2);
+    padding:4px 10px;border-radius:2px;
+  }
+  .rec-cam-badge.show { display:flex; }
+  .rec-cam-badge span { font-family:'Space Mono',monospace;font-size:.6rem;color:var(--accent2);letter-spacing:.1em; }
+  .rec-cam-dot { width:7px;height:7px;background:var(--accent2);border-radius:50%;animation:blink 1s step-start infinite; }
+
+  /* FILTER STRIP */
+  .filter-strip {
+    display:flex;gap:6px;max-width:740px;width:100%;
+    margin-top:12px;overflow-x:auto;padding-bottom:4px;
+    scrollbar-width:none;
+  }
+  .filter-strip::-webkit-scrollbar { display:none; }
+  .filter-btn {
+    flex-shrink:0;display:flex;flex-direction:column;align-items:center;gap:4px;
+    cursor:pointer;padding:5px;border:1px solid var(--border);border-radius:3px;
+    transition:border-color .2s;background:none;
+  }
+  .filter-btn:hover,.filter-btn.active { border-color:var(--accent); }
+  .filter-btn span { font-family:'Space Mono',monospace;font-size:.5rem;color:var(--muted);letter-spacing:.08em;text-transform:uppercase; }
+  .filter-btn.active span { color:var(--accent); }
+  .filter-thumb { width:50px;height:36px;border-radius:2px;overflow:hidden;background:#222; }
+  .filter-thumb canvas { width:100%;height:100%;display:block; }
+
+  /* ZOOM */
+  .zoom-wrap {
+    display:none;align-items:center;gap:10px;
+    max-width:740px;width:100%;margin-top:10px;
+  }
+  .zoom-label {
+    font-family:'Space Mono',monospace;font-size:.62rem;
+    color:var(--muted);letter-spacing:.1em;white-space:nowrap;min-width:70px;
+  }
+  input[type=range] {
+    -webkit-appearance:none;flex:1;height:3px;
+    background:var(--border);border-radius:2px;outline:none;cursor:pointer;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance:none;width:14px;height:14px;
+    border-radius:50%;background:var(--accent);cursor:pointer;
+  }
+
+  /* TOOLBAR */
+  .toolbar {
+    display:flex;flex-wrap:wrap;gap:6px;
+    max-width:740px;width:100%;margin-top:12px;align-items:center;
+  }
+  .btn {
+    background:none;border:1px solid var(--border);color:var(--text);
+    font-family:'Space Mono',monospace;font-size:.62rem;letter-spacing:.1em;
+    padding:8px 14px;border-radius:2px;cursor:pointer;
+    transition:all .2s;text-transform:uppercase;white-space:nowrap;
+  }
+  .btn:hover { border-color:var(--accent);color:var(--accent); }
+  .btn.active { border-color:var(--accent);color:var(--accent);background:rgba(200,255,0,.07); }
+  .btn:disabled { opacity:.3;cursor:not-allowed; }
+  .btn.danger { }
+  .btn.danger:hover { border-color:var(--accent2);color:var(--accent2); }
+  .btn.rec-btn.recording { border-color:var(--accent2);color:var(--accent2);background:rgba(255,77,109,.08); }
+  select.btn { appearance:none;background:var(--surface);padding:8px 12px; }
+  .sep { width:1px;height:28px;background:var(--border);flex-shrink:0; }
+
+  /* TIMER OPTIONS */
+  .timer-group { display:flex;gap:4px;align-items:center; }
+  .timer-opt {
+    background:none;border:1px solid var(--border);color:var(--muted);
+    font-family:'Space Mono',monospace;font-size:.6rem;padding:6px 10px;
+    border-radius:2px;cursor:pointer;transition:all .2s;
+  }
+  .timer-opt:hover { border-color:var(--accent);color:var(--accent); }
+  .timer-opt.active { border-color:var(--accent);color:var(--accent);background:rgba(200,255,0,.07); }
+
+  /* SHUTTER */
+  .shutter-wrap {
+    display:flex;align-items:center;justify-content:center;
+    max-width:740px;width:100%;margin-top:16px;
+  }
+  .btn-shutter {
+    width:68px;height:68px;border-radius:50%;
+    background:var(--surface);border:2px solid var(--muted);
+    cursor:pointer;position:relative;transition:all .15s;
+    display:flex;align-items:center;justify-content:center;
+  }
+  .btn-shutter::after {
+    content:'';width:52px;height:52px;
+    border-radius:50%;background:var(--text);transition:all .15s;
+  }
+  .btn-shutter:hover { border-color:var(--accent); }
+  .btn-shutter:hover::after { background:var(--accent);transform:scale(.92); }
+  .btn-shutter:active::after { transform:scale(.78); }
+  .btn-shutter:disabled { opacity:.3;cursor:not-allowed; }
+
+  /* STATUS */
+  .status-bar {
+    display:flex;align-items:center;gap:16px;flex-wrap:wrap;
+    max-width:740px;width:100%;margin-top:12px;
+  }
+  .status-item {
+    font-family:'Space Mono',monospace;font-size:.6rem;
+    letter-spacing:.1em;color:var(--muted);
+    display:flex;align-items:center;gap:6px;
+  }
+  .status-dot { width:6px;height:6px;border-radius:50%;background:var(--muted); }
+  .status-dot.green { background:#00e676;box-shadow:0 0 6px #00e676; }
+
+  /* GALLERY */
+  .gallery-title {
+    display:none;
+    font-family:'Space Mono',monospace;font-size:.65rem;letter-spacing:.12em;
+    color:var(--muted);max-width:740px;width:100%;
+    margin-top:20px;padding-bottom:8px;border-bottom:1px solid var(--border);
+  }
+  .gallery {
+    display:flex;gap:8px;max-width:740px;width:100%;
+    overflow-x:auto;padding:10px 0;
+    scrollbar-width:thin;scrollbar-color:var(--border) transparent;
+    min-height:0;
+  }
+  .gallery-empty {
+    display:flex;font-family:'Space Mono',monospace;font-size:.6rem;
+    color:var(--muted);letter-spacing:.1em;
+    max-width:740px;width:100%;padding:12px 0;
+  }
+
+  .gallery-item {
+    flex-shrink:0;width:96px;height:72px;
+    border:1px solid var(--border);border-radius:2px;
+    overflow:hidden;position:relative;
+    transition:border-color .2s;
+  }
+  .gallery-item:hover { border-color:var(--muted); }
+  .gallery-item img,
+  .gallery-item video.thumb {
+    width:100%;height:100%;object-fit:cover;display:block;
+  }
+  .gallery-item .vid-badge {
+    position:absolute;top:4px;left:4px;
+    background:var(--accent2);color:#fff;
+    font-family:'Space Mono',monospace;font-size:.45rem;
+    padding:2px 5px;border-radius:1px;
+  }
+  .gallery-item .actions {
+    position:absolute;inset:0;
+    background:rgba(0,0,0,.78);
+    display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:5px;
+    opacity:0;transition:opacity .2s;
+  }
+  .gallery-item:hover .actions { opacity:1; }
+  .gallery-item .actions button {
+    background:none;border:none;cursor:pointer;
+    font-family:'Space Mono',monospace;font-size:.55rem;
+    letter-spacing:.08em;padding:5px 10px;border-radius:1px;
+    width:74px;text-align:center;transition:all .15s;
+  }
+  .act-dl { color:var(--accent);border:1px solid rgba(200,255,0,.3) !important; }
+  .act-dl:hover { background:rgba(200,255,0,.15) !important; }
+  .act-del { color:var(--accent2);border:1px solid rgba(255,77,109,.3) !important; }
+  .act-del:hover { background:rgba(255,77,109,.15) !important; }
+</style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/peerjs/1.5.2/peerjs.min.js"></script>
+</head>
+<body>
+
+<div class="header">
+  <div class="logo">
+    <svg viewBox="0 0 24 24"><path d="M12 15.2A3.2 3.2 0 1 0 12 8.8a3.2 3.2 0 0 0 0 6.4zM20 4h-3.17L15 2H9L7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2zm-8 13a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/></svg>
+  </div>
+  <h1>WebCam Pro</h1>
+  <div class="rec-badge" id="recBadge"><div class="rec-dot"></div>LIVE</div>
+</div>
+
+<!-- CAMERA -->
+<div class="cam-wrapper">
+  <div class="corner-tr"></div>
+  <div class="corner-bl"></div>
+  <div class="scanline"></div>
+  <div class="flash" id="flash"></div>
+  <div class="overlay-info" id="overlayInfo">— STANDBY —</div>
+  <div class="timer-overlay" id="timerOverlay">
+    <div class="timer-num" id="timerNum">3</div>
+  </div>
+  <div class="rec-cam-badge" id="recCamBadge">
+    <div class="rec-cam-dot"></div>
+    <span id="recTime">00:00</span>
+  </div>
+  <div class="no-cam" id="noCam">
+    <svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor">
+      <path d="M20 5h-3.17L15 3H9L7.17 5H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2zm-8 13a5 5 0 1 1 0-10 5 5 0 0 1 0 10z"/>
+    </svg>
+    <span>KLIK "START" UNTUK MULAI</span>
+  </div>
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="specialCanvas" style="position:absolute;inset:0;width:100%;height:100%;display:none;z-index:4;image-rendering:pixelated"></canvas>
+</div>
+
+<!-- FILTER STRIP -->
+<div class="filter-strip" id="filterStrip"></div>
+
+<!-- ZOOM -->
+<div class="zoom-wrap" id="zoomWrap">
+  <span class="zoom-label" id="zoomLabel">ZOOM 1.0×</span>
+  <input type="range" id="zoomSlider" min="1" max="4" step="0.1" value="1" oninput="applyZoom(this.value)">
+</div>
+
+<!-- TOOLBAR -->
+<div class="toolbar">
+  <button class="btn" id="btnStart" onclick="startCamera()">▶ START</button>
+  <button class="btn danger" id="btnStop" onclick="stopCamera()" style="display:none">■ STOP</button>
+
+  <div class="sep camOnly" style="display:none"></div>
+  <button class="btn camOnly" id="btnSwitch" style="display:none" onclick="switchCamera()">↩ BALIK</button>
+  <select class="btn camOnly" id="camSelect" onchange="changeCamera()" style="display:none"></select>
+  <button class="btn camOnly" id="btnMirror" style="display:none" onclick="toggleMirror()">⇄ MIRROR</button>
+
+  <div class="sep camOnly" style="display:none"></div>
+
+  <!-- Timer -->
+  <div class="timer-group camOnly" id="timerGroup" style="display:none">
+    <button class="timer-opt active" onclick="setTimer(0,this)">⏱ OFF</button>
+    <button class="timer-opt" onclick="setTimer(3,this)">3s</button>
+    <button class="timer-opt" onclick="setTimer(5,this)">5s</button>
+    <button class="timer-opt" onclick="setTimer(10,this)">10s</button>
+  </div>
+
+  <div class="sep camOnly" style="display:none"></div>
+  <button class="btn rec-btn camOnly" id="btnRecord" style="display:none" onclick="toggleRecord()">⏺ REC VIDEO</button>
+  <div class="sep camOnly" style="display:none"></div>
+  <button class="btn camOnly" id="btnLive" style="display:none" onclick="startLive()">📡 SIARAN LIVE</button>
+  <div class="sep" id="sepRes"></div>
+  <select class="btn" id="resSelect" onchange="changeResolution()" title="Pilih Resolusi">
+    <option value="240p">240p — 426×240</option>
+    <option value="480p">480p — 854×480</option>
+    <option value="720p" selected>720p HD</option>
+    <option value="1080p">1080p FHD</option>
+    <option value="1440p">1440p QHD</option>
+    <option value="4k">4K UHD — 3840×2160</option>
+  </select>
+</div>
+
+<!-- SHUTTER -->
+<div class="shutter-wrap">
+  <button class="btn-shutter" id="btnCapture" onclick="capturePhoto()" disabled title="Ambil Foto (Spasi)"></button>
+</div>
+
+<!-- STATUS -->
+<div class="status-bar">
+  <div class="status-item">
+    <div class="status-dot" id="statusDot"></div>
+    <span id="statusText">OFFLINE</span>
+  </div>
+  <div class="status-item" id="resInfo" style="display:none"><span id="resText"></span></div>
+  <div class="status-item" id="mediaInfo" style="display:none"><span id="mediaText">0 ITEM</span></div>
+</div>
+
+<!-- GALLERY -->
+<!-- LIGHTBOX -->
+<div id="lightbox" style="display:none;position:fixed;inset:0;z-index:100;background:rgba(0,0,0,.92);align-items:center;justify-content:center;backdrop-filter:blur(8px)">
+  <div style="position:relative;max-width:92vw;max-height:92vh;display:flex;align-items:center;justify-content:center">
+    <img id="lbImg" style="max-width:92vw;max-height:88vh;object-fit:contain;border-radius:3px;display:none">
+    <video id="lbVid" autoplay loop muted playsinline style="max-width:92vw;max-height:88vh;object-fit:contain;border-radius:3px;display:none"></video>
+
+    <!-- 3 dot button -->
+    <button id="lbMenuBtn" onclick="toggleLbMenu(event)" style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);border:1px solid rgba(255,255,255,.15);color:#fff;width:36px;height:36px;border-radius:50%;font-size:1.2rem;cursor:pointer;display:flex;align-items:center;justify-content:center;letter-spacing:1px;z-index:5">⋮</button>
+
+    <!-- Dropdown menu -->
+    <div id="lbMenu" style="display:none;position:absolute;top:52px;right:10px;background:#1a1a1a;border:1px solid #333;border-radius:3px;overflow:hidden;z-index:10;min-width:140px">
+      <button onclick="lbDownload()" style="width:100%;background:none;border:none;border-bottom:1px solid #2a2a2a;color:#c8ff00;font-family:'Space Mono',monospace;font-size:.7rem;letter-spacing:.1em;padding:12px 16px;cursor:pointer;text-align:left;transition:background .15s" onmouseover="this.style.background='rgba(200,255,0,.08)'" onmouseout="this.style.background='none'">↓ DOWNLOAD</button>
+      <button onclick="lbDelete()" style="width:100%;background:none;border:none;color:#ff4d6d;font-family:'Space Mono',monospace;font-size:.7rem;letter-spacing:.1em;padding:12px 16px;cursor:pointer;text-align:left;transition:background .15s" onmouseover="this.style.background='rgba(255,77,109,.08)'" onmouseout="this.style.background='none'">✕ HAPUS</button>
+    </div>
+  </div>
+
+  <!-- Close area -->
+  <div onclick="closeLightbox()" style="position:fixed;inset:0;z-index:-1;cursor:zoom-out"></div>
+
+  <!-- Close X -->
+  <button onclick="closeLightbox()" style="position:fixed;top:16px;left:16px;background:rgba(0,0,0,.5);border:1px solid rgba(255,255,255,.15);color:#fff;width:36px;height:36px;border-radius:50%;font-size:.9rem;cursor:pointer;z-index:5">✕</button>
+</div>
+
+<!-- LIVE MODAL -->
+<div id="liveModal" style="display:none;position:fixed;inset:0;z-index:200;background:rgba(0,0,0,.88);align-items:center;justify-content:center;backdrop-filter:blur(10px)">
+  <div style="background:#111;border:1px solid #2a2a2a;border-radius:6px;padding:32px;max-width:420px;width:90%;position:relative">
+    <button onclick="closeLiveModal()" style="position:absolute;top:14px;right:14px;background:none;border:none;color:#555;font-size:1.1rem;cursor:pointer">✕</button>
+    <div style="font-family:'Space Mono',monospace;font-size:.7rem;letter-spacing:.15em;color:var(--accent);margin-bottom:20px">📡 SIARAN LIVE</div>
+    <div id="liveStatus" style="font-family:'Sora',sans-serif;font-size:.85rem;color:#aaa;margin-bottom:20px;line-height:1.6">
+      Menghubungkan ke server...
+    </div>
+
+    <!-- Room code box -->
+    <div id="liveCodeBox" style="display:none">
+      <div style="font-family:'Space Mono',monospace;font-size:.6rem;color:var(--muted);letter-spacing:.1em;margin-bottom:6px">KODE SIARAN</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">
+        <div id="liveCode" style="flex:1;background:#0a0a0a;border:1px solid #333;border-radius:3px;padding:12px 14px;font-family:'Space Mono',monospace;font-size:1.2rem;letter-spacing:.2em;color:var(--accent);text-align:center"></div>
+        <button onclick="copyCode()" style="background:none;border:1px solid #333;color:var(--muted);font-family:'Space Mono',monospace;font-size:.6rem;padding:10px 14px;border-radius:3px;cursor:pointer;transition:all .2s;white-space:nowrap" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='#333';this.style.color='var(--muted)'">SALIN</button>
+      </div>
+
+      <div style="font-family:'Space Mono',monospace;font-size:.6rem;color:var(--muted);letter-spacing:.1em;margin-bottom:6px">LINK LANGSUNG</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:20px">
+        <div id="liveLink" style="flex:1;background:#0a0a0a;border:1px solid #333;border-radius:3px;padding:8px 12px;font-family:'Space Mono',monospace;font-size:.55rem;color:#777;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+        <button onclick="copyLink()" style="background:none;border:1px solid #333;color:var(--muted);font-family:'Space Mono',monospace;font-size:.6rem;padding:8px 12px;border-radius:3px;cursor:pointer;transition:all .2s;white-space:nowrap" onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" onmouseout="this.style.borderColor='#333';this.style.color='var(--muted)'">SALIN</button>
+      </div>
+
+      <div style="background:#0f1a00;border:1px solid #2a3a00;border-radius:3px;padding:12px 14px;font-family:'Sora',sans-serif;font-size:.75rem;color:#8aaa44;line-height:1.6;margin-bottom:20px">
+        Bagikan kode atau link di atas ke penonton. Penonton cukup buka link atau masukkan kode di halaman ini.
+      </div>
+
+      <!-- Viewer count -->
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px">
+        <div style="width:8px;height:8px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent);animation:pulse 1.5s infinite"></div>
+        <span id="viewerCount" style="font-family:'Space Mono',monospace;font-size:.65rem;color:var(--accent);letter-spacing:.1em">0 PENONTON</span>
+      </div>
+    </div>
+
+    <button onclick="stopLive()" id="btnStopLive" style="display:none;width:100%;background:rgba(255,77,109,.1);border:1px solid var(--accent2);color:var(--accent2);font-family:'Space Mono',monospace;font-size:.65rem;letter-spacing:.1em;padding:12px;border-radius:3px;cursor:pointer;transition:all .2s" onmouseover="this.style.background='rgba(255,77,109,.2)'" onmouseout="this.style.background='rgba(255,77,109,.1)'">■ HENTIKAN SIARAN</button>
+  </div>
+</div>
+
+<!-- VIEWER MODE (muncul kalau buka link dengan ?view=ID) -->
+<div id="viewerMode" style="display:none;position:fixed;inset:0;z-index:300;background:#050505;flex-direction:column;align-items:center;justify-content:center">
+  <div style="font-family:'Space Mono',monospace;font-size:.75rem;letter-spacing:.15em;color:var(--accent);margin-bottom:20px;display:flex;align-items:center;gap:10px">
+    <div style="width:10px;height:10px;border-radius:50%;background:var(--accent2);animation:blink 1s step-start infinite"></div>
+    SIARAN LIVE
+  </div>
+  <video id="viewerVideo" autoplay playsinline style="width:100%;max-width:900px;max-height:85vh;object-fit:contain;background:#000;border-radius:4px"></video>
+  <div id="viewerStatus" style="font-family:'Space Mono',monospace;font-size:.65rem;color:var(--muted);margin-top:16px;letter-spacing:.1em">Menghubungkan...</div>
+
+  <!-- Enter code manually -->
+  <div id="viewerJoinBox" style="margin-top:20px;display:flex;gap:8px;align-items:center">
+    <input id="viewerCodeInput" placeholder="Masukkan kode siaran" style="background:#111;border:1px solid #333;color:var(--text);font-family:'Space Mono',monospace;font-size:.8rem;padding:10px 16px;border-radius:3px;width:180px;letter-spacing:.1em;text-transform:uppercase;outline:none" oninput="this.value=this.value.toUpperCase()">
+    <button onclick="viewerJoin()" style="background:none;border:1px solid var(--accent);color:var(--accent);font-family:'Space Mono',monospace;font-size:.65rem;letter-spacing:.1em;padding:10px 16px;border-radius:3px;cursor:pointer">TONTON</button>
+  </div>
+</div>
+
+<div class="gallery-title" id="galleryTitle">GALERI</div>
+<div class="gallery" id="gallery"></div>
+<div class="gallery-empty" id="galleryEmpty">Belum ada foto atau video.</div>
+
+<script>
+// ---- RESOLUTION ----
+const resMap = {
+  '240p':  { width: 426,  height: 240  },
+  '480p':  { width: 854,  height: 480  },
+  '720p':  { width: 1280, height: 720  },
+  '1080p': { width: 1920, height: 1080 },
+  '1440p': { width: 2560, height: 1440 },
+  '4k':    { width: 3840, height: 2160 },
+};
+
+function getSelectedRes() {
+  const key = document.getElementById('resSelect').value;
+  return resMap[key] || resMap['720p'];
+}
+
+async function changeResolution() {
+  if (!stream) return;
+  stopCamera(false);
+  await startCamera();
+}
+
+// ---- STATE ----
+let stream = null;
+let currentFacingMode = 'user';
+let currentDeviceId = null;
+let mirror = false;
+let currentFilter = 'none';
+let timerSec = 0;
+let timerRunning = false;
+let mediaRecorder = null;
+let recordChunks = [];
+let recordInterval = null;
+let recordSecs = 0;
+let mediaCount = 0;
+let clockInterval;
+let thumbAnimId;
+
+const video = document.getElementById('video');
+const offscreenCanvas = document.createElement('canvas');
+const offCtx = offscreenCanvas.getContext('2d');
+
+// ---- FILTERS ----
+const filters = [
+  { id:'none',    label:'Normal',    css:'none' },
+  { id:'gray',    label:'B&W',       css:'grayscale(100%)' },
+  { id:'sepia',   label:'Sepia',     css:'sepia(100%)' },
+  { id:'vintage', label:'Vintage',   css:'sepia(60%) contrast(1.1) brightness(0.95) saturate(0.8)' },
+  { id:'vivid',   label:'Vivid',     css:'saturate(180%) contrast(1.1)' },
+  { id:'cool',    label:'Cool',      css:'hue-rotate(180deg) saturate(130%)' },
+  { id:'warm',    label:'Warm',      css:'sepia(30%) saturate(140%) brightness(1.05)' },
+  { id:'invert',  label:'Invert',    css:'invert(100%)' },
+  { id:'night',   label:'🌙 Night',  css:'__special__' },
+  { id:'thermal', label:'🌡 Thermal', css:'__special__' },
+];
+
+// Special filter canvas
+const specialCanvas = document.getElementById('specialCanvas');
+const spCtx = specialCanvas.getContext('2d', { willReadFrequently: true });
+let specialAnimId = null;
+
+// Thermal palette: cold (black→blue→cyan→green→yellow→red→white)
+const thermalPalette = (() => {
+  const p = new Uint8ClampedArray(256 * 3);
+  for (let i = 0; i < 256; i++) {
+    let r,g,b;
+    if (i < 32) {
+      // black → deep blue
+      r=0; g=0; b=Math.round(i*6);
+    } else if (i < 80) {
+      // blue → cyan
+      const t=(i-32)/48; r=0; g=Math.round(t*255); b=Math.round(192+t*63);
+    } else if (i < 128) {
+      // cyan → green
+      const t=(i-80)/48; r=0; g=255; b=Math.round(255-t*255);
+    } else if (i < 180) {
+      // green → yellow
+      const t=(i-128)/52; r=Math.round(t*255); g=255; b=0;
+    } else if (i < 220) {
+      // yellow → red
+      const t=(i-180)/40; r=255; g=Math.round(255-t*255); b=0;
+    } else {
+      // red → white
+      const t=(i-220)/36; r=255; g=Math.round(t*255); b=Math.round(t*255);
+    }
+    p[i*3]=r; p[i*3+1]=g; p[i*3+2]=b;
+  }
+  return p;
+})();
+
+function renderSpecialFilter() {
+  if (!stream || !video.videoWidth) { specialAnimId = requestAnimationFrame(renderSpecialFilter); return; }
+
+  const w = video.videoWidth, h = video.videoHeight;
+  if (specialCanvas.width !== w || specialCanvas.height !== h) {
+    specialCanvas.width = w; specialCanvas.height = h;
+  }
+
+  // Draw mirrored if needed
+  spCtx.save();
+  if (mirror) { spCtx.translate(w,0); spCtx.scale(-1,1); }
+  spCtx.drawImage(video, 0, 0, w, h);
+  spCtx.restore();
+
+  const imageData = spCtx.getImageData(0, 0, w, h);
+  const data = imageData.data;
+
+  if (currentFilter === 'night') {
+    // Night vision: grayscale → amplify → green channel + scan lines + noise
+    for (let i = 0; i < data.length; i += 4) {
+      const gray = Math.min(255, (data[i]*0.3 + data[i+1]*0.59 + data[i+2]*0.11) * 2.8 + 20);
+      const noise = (Math.random() - 0.5) * 18;
+      const val = Math.max(0, Math.min(255, gray + noise));
+      // green phosphor tint
+      data[i]   = val * 0.08;
+      data[i+1] = val;
+      data[i+2] = val * 0.12;
+      data[i+3] = 255;
+    }
+    // scanlines every 3 rows — darken
+    for (let y = 0; y < h; y += 3) {
+      for (let x = 0; x < w; x++) {
+        const idx = (y * w + x) * 4;
+        data[idx] *= 0.55; data[idx+1] *= 0.55; data[idx+2] *= 0.55;
+      }
+    }
+  } else if (currentFilter === 'thermal') {
+    for (let i = 0; i < data.length; i += 4) {
+      // luminance with slight warm bias
+      let gray = data[i]*0.35 + data[i+1]*0.5 + data[i+2]*0.15;
+      // slight smoothing simulation via clamping
+      gray = Math.max(0, Math.min(255, gray));
+      const pi = Math.floor(gray) * 3;
+      data[i]   = thermalPalette[pi];
+      data[i+1] = thermalPalette[pi+1];
+      data[i+2] = thermalPalette[pi+2];
+      data[i+3] = 255;
+    }
+  }
+
+  spCtx.putImageData(imageData, 0, 0);
+
+  // Night vision: add vignette overlay
+  if (currentFilter === 'night') {
+    const grad = spCtx.createRadialGradient(w/2,h/2,h*0.3,w/2,h/2,h*0.75);
+    grad.addColorStop(0,'rgba(0,0,0,0)');
+    grad.addColorStop(1,'rgba(0,30,0,0.7)');
+    spCtx.fillStyle = grad;
+    spCtx.fillRect(0,0,w,h);
+  }
+
+  specialAnimId = requestAnimationFrame(renderSpecialFilter);
+}
+
+function buildFilterStrip() {
+  const strip = document.getElementById('filterStrip');
+  strip.innerHTML = '';
+  filters.forEach(f => {
+    const btn = document.createElement('button');
+    btn.className = 'filter-btn' + (f.id === currentFilter ? ' active' : '');
+    btn.dataset.id = f.id;
+    const thumb = document.createElement('div');
+    thumb.className = 'filter-thumb';
+    const c = document.createElement('canvas');
+    c.width = 50; c.height = 36;
+    c.id = 'ft_' + f.id;
+    thumb.appendChild(c);
+    const label = document.createElement('span');
+    label.textContent = f.label;
+    btn.appendChild(thumb);
+    btn.appendChild(label);
+    btn.onclick = () => applyFilter(f.id);
+    strip.appendChild(btn);
+  });
+  startThumbLoop();
+}
+
+function startThumbLoop() {
+  cancelAnimationFrame(thumbAnimId);
+  function loop() {
+    if (!stream) return;
+    filters.forEach(f => {
+      const c = document.getElementById('ft_' + f.id);
+      if (!c || !video.videoWidth) return;
+      const cx = c.getContext('2d', { willReadFrequently: true });
+
+      if (f.css === '__special__') {
+        // draw raw video then apply pixel effect
+        cx.drawImage(video, 0, 0, 50, 36);
+        const imgData = cx.getImageData(0, 0, 50, 36);
+        const d = imgData.data;
+        if (f.id === 'night') {
+          for (let i=0;i<d.length;i+=4) {
+            const g = Math.min(255,(d[i]*.3+d[i+1]*.59+d[i+2]*.11)*2.8+20);
+            d[i]=g*.08; d[i+1]=g; d[i+2]=g*.12;
+          }
+        } else if (f.id === 'thermal') {
+          for (let i=0;i<d.length;i+=4) {
+            const g=Math.min(255,d[i]*.35+d[i+1]*.5+d[i+2]*.15);
+            const pi=Math.floor(g)*3;
+            d[i]=thermalPalette[pi]; d[i+1]=thermalPalette[pi+1]; d[i+2]=thermalPalette[pi+2];
+          }
+        }
+        cx.putImageData(imgData, 0, 0);
+      } else {
+        cx.filter = f.css === 'none' ? '' : f.css;
+        cx.drawImage(video, 0, 0, 50, 36);
+      }
+    });
+    thumbAnimId = requestAnimationFrame(loop);
+  }
+  thumbAnimId = requestAnimationFrame(loop);
+}
+
+function applyFilter(id) {
+  currentFilter = id;
+  const f = filters.find(x => x.id === id);
+  const isSpecial = f.css === '__special__';
+
+  // Toggle video vs special canvas
+  video.style.filter = isSpecial ? '' : (f.css === 'none' ? '' : f.css);
+  specialCanvas.style.display = isSpecial ? 'block' : 'none';
+
+  if (isSpecial) {
+    cancelAnimationFrame(specialAnimId);
+    renderSpecialFilter();
+  } else {
+    cancelAnimationFrame(specialAnimId);
+  }
+
+  document.querySelectorAll('.filter-btn').forEach(b => b.classList.toggle('active', b.dataset.id === id));
+}
+
+// ---- CLOCK ----
+function updateClock() {
+  const now = new Date();
+  const t = now.toTimeString().slice(0,8);
+  const d = now.toLocaleDateString('id-ID',{day:'2-digit',month:'short',year:'numeric'});
+  document.getElementById('overlayInfo').textContent = `${d}  ${t}`;
+}
+
+// ---- CAMERA ----
+async function startCamera() {
+  try {
+    const res = getSelectedRes();
+    const constraints = {
+      video: currentDeviceId
+        ? { deviceId:{exact:currentDeviceId}, width:{ideal:res.width}, height:{ideal:res.height} }
+        : { facingMode:currentFacingMode, width:{ideal:res.width}, height:{ideal:res.height} },
+      audio: false
+    };
+    stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+    video.style.display = 'block';
+    document.getElementById('noCam').style.display = 'none';
+
+    video.onloadedmetadata = () => {
+      const w = video.videoWidth, h = video.videoHeight;
+      offscreenCanvas.width = w; offscreenCanvas.height = h;
+      // Show actual resolution granted (may differ from requested)
+      const reqRes = getSelectedRes();
+      const actual = (w === reqRes.width && h === reqRes.height)
+        ? `${w}×${h}`
+        : `${w}×${h} ⚠ (maks perangkat)`;
+      document.getElementById('resText').textContent = actual;
+      document.getElementById('resInfo').style.display = 'flex';
+    };
+
+    applyFilter(currentFilter);
+    applyMirror();
+    setUI(true);
+    clearInterval(clockInterval);
+    clockInterval = setInterval(updateClock, 1000);
+    updateClock();
+    await loadDevices();
+    buildFilterStrip();
+    document.getElementById('zoomWrap').style.display = 'flex';
+  } catch(err) {
+    alert('Gagal akses kamera: ' + err.message);
+  }
+}
+
+function setUI(on) {
+  const els = document.querySelectorAll('.camOnly');
+  els.forEach(el => el.style.display = on ? (el.tagName === 'DIV' && el.classList.contains('sep') ? '' : on ? '' : 'none') : 'none');
+  // specific
+  document.getElementById('btnStart').style.display = on ? 'none' : '';
+  document.getElementById('btnStop').style.display = on ? '' : 'none';
+  document.getElementById('btnSwitch').style.display = on ? '' : 'none';
+  document.getElementById('btnMirror').style.display = on ? '' : 'none';
+  document.getElementById('btnRecord').style.display = on ? '' : 'none';
+  document.getElementById('timerGroup').style.display = on ? 'flex' : 'none';
+  document.getElementById('btnCapture').disabled = !on;
+  document.getElementById('recBadge').classList.toggle('active', on);
+  document.getElementById('statusDot').className = 'status-dot' + (on ? ' green' : '');
+  document.getElementById('statusText').textContent = on ? 'LIVE' : 'OFFLINE';
+  document.getElementById('btnLive').style.display = on ? '' : 'none';
+
+  if (!on) {
+    if (isLive) stopLive();
+    document.getElementById('zoomWrap').style.display = 'none';
+    document.getElementById('filterStrip').innerHTML = '';
+    document.getElementById('overlayInfo').textContent = '— STANDBY —';
+    document.getElementById('resInfo').style.display = 'none';
+    cancelAnimationFrame(thumbAnimId);
+    cancelAnimationFrame(specialAnimId);
+    specialCanvas.style.display = 'none';
+  }
+}
+
+// Close menu on outside click
+document.addEventListener('click', () => {
+  document.getElementById('lbMenu').style.display = 'none';
+});
+
+// ESC to close
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') closeLightbox();
+  if (e.code === 'Space' && !document.getElementById('btnCapture').disabled && document.getElementById('lightbox').style.display === 'none') {
+    e.preventDefault(); capturePhoto();
+  }
+});
+
+async function loadDevices() {
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+    const sel = document.getElementById('camSelect');
+    if (devs.length > 1) {
+      sel.innerHTML = '';
+      devs.forEach((d,i) => {
+        const opt = document.createElement('option');
+        opt.value = d.deviceId;
+        opt.text = d.label || `Kamera ${i+1}`;
+        sel.appendChild(opt);
+      });
+      const active = stream.getVideoTracks()[0].getSettings().deviceId;
+      sel.value = active; currentDeviceId = active;
+      sel.style.display = '';
+    }
+  } catch(e){}
+}
+
+async function changeCamera() {
+  currentDeviceId = document.getElementById('camSelect').value;
+  stopCamera(false); await startCamera();
+}
+
+async function switchCamera() {
+  currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+  currentDeviceId = null;
+  stopCamera(false); await startCamera();
+}
+
+function stopCamera(full = true) {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+  if (stream) { stream.getTracks().forEach(t => t.stop()); stream = null; }
+  video.srcObject = null;
+  if (full) {
+    video.style.display = 'none';
+    document.getElementById('noCam').style.display = 'flex';
+    setUI(false);
+    clearInterval(clockInterval);
+    clearInterval(recordInterval);
+    document.getElementById('recCamBadge').classList.remove('show');
+    document.getElementById('btnRecord').classList.remove('recording');
+    document.getElementById('btnRecord').textContent = '⏺ REC VIDEO';
+    document.getElementById('btnMirror').classList.remove('active');
+  }
+}
+
+// ---- MIRROR ----
+function toggleMirror() {
+  mirror = !mirror;
+  applyMirror();
+  document.getElementById('btnMirror').classList.toggle('active', mirror);
+}
+function applyMirror() {
+  const zoom = parseFloat(document.getElementById('zoomSlider').value) || 1;
+  video.style.transform = (mirror ? 'scaleX(-1) ' : '') + (zoom > 1 ? `scale(${zoom})` : '');
+}
+
+// ---- ZOOM ----
+function applyZoom(val) {
+  const z = parseFloat(val);
+  document.getElementById('zoomLabel').textContent = `ZOOM ${z.toFixed(1)}×`;
+  if (!stream) return;
+  const track = stream.getVideoTracks()[0];
+  const caps = track.getCapabilities ? track.getCapabilities() : {};
+  if (caps.zoom) {
+    track.applyConstraints({ advanced:[{zoom: z}] }).catch(()=>{});
+  }
+  video.style.transform = (mirror ? 'scaleX(-1) ' : '') + (z > 1 ? `scale(${z})` : '');
+}
+
+// ---- TIMER ----
+function setTimer(sec, btn) {
+  timerSec = sec;
+  document.querySelectorAll('.timer-opt').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+}
+
+// ---- CAPTURE ----
+function capturePhoto() {
+  if (!stream || timerRunning) return;
+  if (timerSec > 0) {
+    runTimer(timerSec, doCapture);
+  } else {
+    doCapture();
+  }
+}
+
+function runTimer(sec, cb) {
+  timerRunning = true;
+  const overlay = document.getElementById('timerOverlay');
+  const numEl = document.getElementById('timerNum');
+  overlay.classList.add('show');
+  let count = sec;
+  numEl.textContent = count;
+
+  const iv = setInterval(() => {
+    count--;
+    if (count <= 0) {
+      clearInterval(iv);
+      overlay.classList.remove('show');
+      timerRunning = false;
+      cb();
+    } else {
+      numEl.textContent = count;
+      // restart animation
+      numEl.style.animation = 'none';
+      void numEl.offsetWidth;
+      numEl.style.animation = 'pop .8s ease-out';
+    }
+  }, 1000);
+}
+
+function playShutterSound() {
+  const ctx = new (window.AudioContext || window.webkitAudioContext)();
+
+  // Mechanical click - short noise burst
+  const bufferSize = ctx.sampleRate * 0.04;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) {
+    data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufferSize, 3);
+  }
+
+  const noise = ctx.createBufferSource();
+  noise.buffer = buffer;
+
+  // Bandpass to make it sound more "clicky"
+  const bandpass = ctx.createBiquadFilter();
+  bandpass.type = 'bandpass';
+  bandpass.frequency.value = 1800;
+  bandpass.Q.value = 0.8;
+
+  // Gain envelope
+  const gainNode = ctx.createGain();
+  gainNode.gain.setValueAtTime(0, ctx.currentTime);
+  gainNode.gain.linearRampToValueAtTime(1.2, ctx.currentTime + 0.003);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.09);
+
+  // Low thud
+  const osc = ctx.createOscillator();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(180, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(60, ctx.currentTime + 0.06);
+  const oscGain = ctx.createGain();
+  oscGain.gain.setValueAtTime(0.4, ctx.currentTime);
+  oscGain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.07);
+
+  noise.connect(bandpass);
+  bandpass.connect(gainNode);
+  gainNode.connect(ctx.destination);
+
+  osc.connect(oscGain);
+  oscGain.connect(ctx.destination);
+
+  noise.start(ctx.currentTime);
+  noise.stop(ctx.currentTime + 0.09);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.07);
+
+  setTimeout(() => ctx.close(), 300);
+}
+
+function doCapture() {
+  const flash = document.getElementById('flash');
+  flash.classList.add('on');
+  setTimeout(() => flash.classList.remove('on'), 150);
+  playShutterSound();
+
+  const f = filters.find(x => x.id === currentFilter);
+  const isSpecial = f && f.css === '__special__';
+
+  if (isSpecial) {
+    // Capture directly from specialCanvas
+    const dataUrl = specialCanvas.toDataURL('image/jpeg', 0.93);
+    addGalleryItem('photo', dataUrl);
+  } else {
+    const w = video.videoWidth, h = video.videoHeight;
+    offscreenCanvas.width = w; offscreenCanvas.height = h;
+    offCtx.save();
+    if (mirror) { offCtx.translate(w,0); offCtx.scale(-1,1); }
+    offCtx.filter = (f && f.css !== 'none') ? f.css : '';
+    offCtx.drawImage(video, 0, 0);
+    offCtx.restore();
+    const dataUrl = offscreenCanvas.toDataURL('image/jpeg', 0.93);
+    addGalleryItem('photo', dataUrl);
+  }
+}
+
+// ---- RECORD ----
+function toggleRecord() {
+  if (!mediaRecorder || mediaRecorder.state === 'inactive') {
+    startRecord();
+  } else {
+    stopRecord();
+  }
+}
+
+function startRecord() {
+  if (!stream) return;
+  recordChunks = [];
+  let mimeType = '';
+  const types = ['video/webm;codecs=vp9','video/webm;codecs=vp8','video/webm','video/mp4'];
+  for (const t of types) {
+    if (MediaRecorder.isTypeSupported(t)) { mimeType = t; break; }
+  }
+  try {
+    mediaRecorder = new MediaRecorder(stream, mimeType ? {mimeType} : {});
+  } catch(e) {
+    mediaRecorder = new MediaRecorder(stream);
+  }
+
+  mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordChunks.push(e.data); };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(recordChunks, { type: mediaRecorder.mimeType || 'video/webm' });
+    addGalleryItem('video', URL.createObjectURL(blob), blob);
+    clearInterval(recordInterval);
+    document.getElementById('recCamBadge').classList.remove('show');
+    document.getElementById('btnRecord').classList.remove('recording');
+    document.getElementById('btnRecord').textContent = '⏺ REC VIDEO';
+    recordSecs = 0;
+  };
+
+  mediaRecorder.start(100);
+  recordSecs = 0;
+  recordInterval = setInterval(() => {
+    recordSecs++;
+    const m = String(Math.floor(recordSecs/60)).padStart(2,'0');
+    const s = String(recordSecs%60).padStart(2,'0');
+    document.getElementById('recTime').textContent = `${m}:${s}`;
+  }, 1000);
+
+  document.getElementById('recCamBadge').classList.add('show');
+  document.getElementById('btnRecord').classList.add('recording');
+  document.getElementById('btnRecord').textContent = '⏹ STOP REC';
+}
+
+function stopRecord() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') mediaRecorder.stop();
+}
+
+// ---- GALLERY ----
+function addGalleryItem(type, src, blob = null) {
+  const gallery = document.getElementById('gallery');
+
+  const item = document.createElement('div');
+  item.className = 'gallery-item';
+
+  if (type === 'video') {
+    const vid = document.createElement('video');
+    vid.className = 'thumb';
+    vid.src = src; vid.muted = true; vid.loop = true; vid.playsInline = true;
+    item.appendChild(vid);
+    const badge = document.createElement('div');
+    badge.className = 'vid-badge'; badge.textContent = 'VID';
+    item.appendChild(badge);
+    item.addEventListener('mouseenter', () => vid.play());
+    item.addEventListener('mouseleave', () => { vid.pause(); vid.currentTime = 0; });
+  } else {
+    const img = document.createElement('img');
+    img.src = src;
+    item.appendChild(img);
+  }
+
+  // Click to open lightbox
+  item.style.cursor = 'pointer';
+  item.addEventListener('click', () => openLightbox(src, type, blob, item));
+
+  gallery.prepend(item);
+
+  mediaCount++;
+  updateMediaCount();
+  document.getElementById('galleryTitle').style.display = 'block';
+  document.getElementById('galleryEmpty').style.display = 'none';
+}
+
+function updateMediaCount() {
+  document.getElementById('mediaText').textContent = `${mediaCount} ITEM`;
+  document.getElementById('mediaInfo').style.display = mediaCount > 0 ? 'flex' : 'none';
+}
+
+// ---- LIGHTBOX ----
+let lbCurrentSrc = null;
+let lbCurrentType = null;
+let lbCurrentBlob = null;
+let lbCurrentItem = null;
+
+function openLightbox(src, type, blob, item) {
+  lbCurrentSrc = src;
+  lbCurrentType = type;
+  lbCurrentBlob = blob;
+  lbCurrentItem = item;
+
+  const lb = document.getElementById('lightbox');
+  const img = document.getElementById('lbImg');
+  const vid = document.getElementById('lbVid');
+
+  if (type === 'video') {
+    vid.src = src; vid.style.display = ''; img.style.display = 'none';
+  } else {
+    img.src = src; img.style.display = ''; vid.style.display = 'none'; vid.src = '';
+  }
+
+  document.getElementById('lbMenu').style.display = 'none';
+  lb.style.display = 'flex';
+  lb.style.animation = 'lbFadeIn .2s ease';
+  document.body.style.overflow = 'hidden';
+}
+
+function closeLightbox() {
+  const lb = document.getElementById('lightbox');
+  lb.style.display = 'none';
+  document.getElementById('lbVid').src = '';
+  document.getElementById('lbMenu').style.display = 'none';
+  document.body.style.overflow = '';
+}
+
+function toggleLbMenu(e) {
+  e.stopPropagation();
+  const m = document.getElementById('lbMenu');
+  m.style.display = m.style.display === 'none' ? 'block' : 'none';
+}
+
+function lbDownload() {
+  const a = document.createElement('a');
+  if (lbCurrentType === 'video' && lbCurrentBlob) {
+    a.href = URL.createObjectURL(lbCurrentBlob);
+    a.download = `webcam_video_${Date.now()}.webm`;
+  } else {
+    a.href = lbCurrentSrc;
+    a.download = `webcam_foto_${Date.now()}.jpg`;
+  }
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  document.getElementById('lbMenu').style.display = 'none';
+}
+
+function lbDelete() {
+  if (!lbCurrentItem) return;
+  closeLightbox();
+  lbCurrentItem.style.transition = 'opacity .25s,transform .25s';
+  lbCurrentItem.style.opacity = '0';
+  lbCurrentItem.style.transform = 'scale(.75)';
+  setTimeout(() => {
+    lbCurrentItem.remove();
+    mediaCount = Math.max(0, mediaCount - 1);
+    updateMediaCount();
+    const gallery = document.getElementById('gallery');
+    if (gallery.children.length === 0) {
+      document.getElementById('galleryTitle').style.display = 'none';
+      document.getElementById('galleryEmpty').style.display = 'flex';
+    }
+  }, 260);
+}
+
+// ---- LIVE STREAMING (WebRTC via PeerJS) ----
+let peer = null;
+let liveConnections = [];
+let viewerPeer = null;
+let isLive = false;
+
+function genCode() {
+  const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  return Array.from({length:6}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
+}
+
+function startLive() {
+  if (!stream) return;
+  document.getElementById('liveModal').style.display = 'flex';
+  document.getElementById('liveStatus').textContent = 'Menghubungkan ke server...';
+  document.getElementById('liveCodeBox').style.display = 'none';
+  document.getElementById('btnStopLive').style.display = 'none';
+
+  const code = genCode();
+  peer = new Peer('webcampro-' + code, {
+    host: '0.peerjs.com',
+    port: 443,
+    secure: true,
+    path: '/',
+    debug: 0
+  });
+
+  peer.on('open', () => {
+    isLive = true;
+    document.getElementById('liveStatus').textContent = 'Siaran aktif! Bagikan kode atau link berikut:';
+    document.getElementById('liveCodeBox').style.display = 'block';
+    document.getElementById('btnStopLive').style.display = 'block';
+    document.getElementById('liveCode').textContent = code;
+
+    const viewerUrl = window.location.href.split('?')[0] + '?view=' + code;
+    document.getElementById('liveLink').textContent = viewerUrl;
+
+    // Show live badge on cam
+    document.getElementById('recBadge').classList.add('active');
+    document.getElementById('btnLive').textContent = '🔴 LIVE';
+    document.getElementById('btnLive').style.color = 'var(--accent2)';
+    document.getElementById('btnLive').style.borderColor = 'var(--accent2)';
+  });
+
+  peer.on('call', call => {
+    call.answer(); // don't send back video - owner is invisible
+    call.on('stream', () => {}); // ignore incoming
+
+    // Send our camera stream
+    const outCall = peer.call(call.peer, stream);
+    liveConnections.push(outCall);
+    updateViewerCount();
+
+    call.on('close', () => {
+      liveConnections = liveConnections.filter(c => c !== outCall);
+      updateViewerCount();
+    });
+  });
+
+  // Viewer connects via data channel to trigger host to call them
+  peer.on('connection', conn => {
+    conn.on('data', data => {
+      if (data.type === 'watch') {
+        const call = peer.call(conn.peer, stream);
+        liveConnections.push(call);
+        updateViewerCount();
+        call.on('close', () => {
+          liveConnections = liveConnections.filter(c => c !== call);
+          updateViewerCount();
+        });
+      }
+    });
+  });
+
+  peer.on('error', err => {
+    document.getElementById('liveStatus').textContent = '❌ Gagal terhubung. Coba lagi.';
+    console.error(err);
+  });
+}
+
+function updateViewerCount() {
+  const n = liveConnections.length;
+  document.getElementById('viewerCount').textContent = n + (n === 1 ? ' PENONTON' : ' PENONTON');
+}
+
+function stopLive() {
+  if (peer) { peer.destroy(); peer = null; }
+  liveConnections = [];
+  isLive = false;
+  document.getElementById('liveModal').style.display = 'none';
+  document.getElementById('btnLive').textContent = '📡 SIARAN LIVE';
+  document.getElementById('btnLive').style.color = '';
+  document.getElementById('btnLive').style.borderColor = '';
+}
+
+function closeLiveModal() {
+  document.getElementById('liveModal').style.display = 'none';
+}
+
+function copyCode() {
+  const code = document.getElementById('liveCode').textContent;
+  navigator.clipboard.writeText(code).then(() => showCopied('Kode disalin!'));
+}
+
+function copyLink() {
+  const link = document.getElementById('liveLink').textContent;
+  navigator.clipboard.writeText(link).then(() => showCopied('Link disalin!'));
+}
+
+function showCopied(msg) {
+  const toast = document.createElement('div');
+  toast.textContent = msg;
+  toast.style.cssText = `
+    position:fixed;bottom:30px;left:50%;transform:translateX(-50%);
+    background:#1a1a1a;border:1px solid var(--accent);
+    color:var(--accent);font-family:'Space Mono',monospace;
+    font-size:.65rem;letter-spacing:.1em;padding:10px 20px;
+    border-radius:3px;z-index:999;animation:lbFadeIn .2s ease;
+  `;
+  document.body.appendChild(toast);
+  setTimeout(() => toast.remove(), 2000);
+}
+
+// ---- VIEWER MODE ----
+function initViewerMode(code) {
+  // Hide camera UI, show viewer
+  document.querySelector('.header').style.display = 'none';
+  document.querySelector('.cam-wrapper').style.display = 'none';
+  document.querySelector('.filter-strip').style.display = 'none';
+  document.querySelector('.zoom-wrap').style.display = 'none';
+  document.querySelector('.toolbar').style.display = 'none';
+  document.querySelector('.shutter-wrap').style.display = 'none';
+  document.querySelector('.status-bar').style.display = 'none';
+  document.querySelector('.gallery-title') && (document.querySelector('.gallery-title').style.display = 'none');
+  document.querySelector('.gallery') && (document.querySelector('.gallery').style.display = 'none');
+  document.querySelector('.gallery-empty') && (document.querySelector('.gallery-empty').style.display = 'none');
+
+  const viewerEl = document.getElementById('viewerMode');
+  viewerEl.style.display = 'flex';
+  document.body.style.background = '#050505';
+
+  if (code) connectViewer(code);
+}
+
+function connectViewer(code) {
+  const fullCode = 'webcampro-' + code.trim().toUpperCase();
+  document.getElementById('viewerStatus').textContent = 'Menghubungkan ke siaran...';
+
+  if (viewerPeer) { viewerPeer.destroy(); }
+
+  viewerPeer = new Peer({
+    host: '0.peerjs.com',
+    port: 443,
+    secure: true,
+    path: '/',
+    debug: 0
+  });
+
+  viewerPeer.on('open', () => {
+    // Connect data channel to trigger host
+    const conn = viewerPeer.connect(fullCode);
+    conn.on('open', () => {
+      conn.send({ type: 'watch' });
+    });
+    conn.on('error', () => {
+      document.getElementById('viewerStatus').textContent = '❌ Kode tidak ditemukan atau siaran sudah berakhir.';
+    });
+
+    viewerPeer.on('call', call => {
+      call.answer(); // no video to send back
+      call.on('stream', remoteStream => {
+        const vid = document.getElementById('viewerVideo');
+        vid.srcObject = remoteStream;
+        document.getElementById('viewerStatus').textContent = '🔴 Sedang menonton siaran live';
+        document.getElementById('viewerJoinBox').style.display = 'none';
+      });
+      call.on('close', () => {
+        document.getElementById('viewerStatus').textContent = '📴 Siaran telah berakhir.';
+      });
+    });
+  });
+
+  viewerPeer.on('error', () => {
+    document.getElementById('viewerStatus').textContent = '❌ Tidak dapat terhubung. Periksa kode dan coba lagi.';
+  });
+}
+
+function viewerJoin() {
+  const code = document.getElementById('viewerCodeInput').value.trim();
+  if (code.length < 4) return;
+  connectViewer(code);
+}
+
+// Auto-detect viewer mode from URL
+(function() {
+  const params = new URLSearchParams(window.location.search);
+  const viewCode = params.get('view');
+  if (viewCode) {
+    window.addEventListener('DOMContentLoaded', () => initViewerMode(viewCode));
+    document.addEventListener('readystatechange', () => {
+      if (document.readyState === 'complete') initViewerMode(viewCode);
+    });
+  }
+})();
+
+// Also expose join box for manual entry on viewer page
+window.addEventListener('load', () => {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.get('view')) return; // only for viewer page
+});
+</script>
+</body>
+</html>
